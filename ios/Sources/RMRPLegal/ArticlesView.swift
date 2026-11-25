@@ -20,6 +20,7 @@ struct Home: View {
     @AppStorage("history") private var history = ""
     @State private var articles: [Article] = []
     @State private var query = ""
+    @State private var selectedTab = 0
     @State private var error = ""
     @State private var importing = false
     let categories = ["УК", "КоАП", "ПК", "УПК", "Законы", "Уставы", "Правила"]
@@ -71,13 +72,35 @@ struct Home: View {
     }
     func remember(_ q: String) { let t = q.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "|", with: " "); guard !t.isEmpty else { return }; history = ([t] + history.split(separator: "|").map(String.init).filter { $0 != t }).prefix(12).joined(separator: "|") }
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Label("Тверской", systemImage: "shield.checkered").font(.title2.bold()).foregroundStyle(.blue)
-                        Text("Правовой справочник RMRP").font(.subheadline).foregroundStyle(.secondary)
-                        Text("\(articles.count) записей · офлайн").font(.caption).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 9) {
+                            Label("Тверской", systemImage: "shield.checkered")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                            Text("Правовой справочник")
+                                .font(.title.bold())
+                                .foregroundStyle(.white)
+                            Text("\(articles.count.formatted()) записей доступны офлайн")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.82))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(22)
+                        .background {
+                            RoundedRectangle(cornerRadius: 24)
+                                .fill(LinearGradient(colors: [Color(red: 0.10, green: 0.24, blue: 0.44), Color(red: 0.04, green: 0.09, blue: 0.19)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+
+                        Button { selectedTab = 1 } label: {
+                            Label("Найти статью или нарушение", systemImage: "magnifyingglass")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                        Text("Разделы").font(.headline).accessibilityAddTraits(.isHeader)
                         if !error.isEmpty { Text(error).foregroundStyle(.red) }
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                             ForEach(categories.indices, id: \.self) { i in
@@ -93,47 +116,190 @@ struct Home: View {
                         Text("Тексты и наказания доступны офлайн. В каждом разделе можно открыть полный текст документа.").font(.footnote).foregroundStyle(.secondary)
                     }.padding()
                 }.background(Color(uiColor: .systemGroupedBackground)).navigationTitle("RMRP Legal")
-            }.tabItem { Label("Главная", systemImage: "house") }
+            }.tabItem { Label("Главная", systemImage: "house") }.tag(0)
             NavigationStack {
                 List {
                     if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !history.isEmpty {
                         Section("Недавние запросы") { ForEach(history.split(separator: "|").map(String.init), id: \.self) { h in Button(h) { query = h } } }
                     } else {
-                        ForEach(results(articles, query)) { a in NavigationLink { detail(a).onAppear { remember(query) } } label: { ArticleRow(article: a) } }
+                        let matches = results(articles, query)
+                        ForEach(matches) { article in
+                            NavigationLink {
+                                detail(article, in: matches).onAppear { remember(query) }
+                            } label: {
+                                ArticleRow(article: article)
+                            }
+                        }
                     }
                 }.overlay { if !query.isEmpty && results(articles, query).isEmpty { ContentUnavailableView.search(text: query) } }.navigationTitle("Поиск").searchable(text: $query, prompt: "Номер статьи или нарушение").onSubmit(of: .search) { remember(query) }
-            }.tabItem { Label("Поиск", systemImage: "magnifyingglass") }
-            NavigationStack { List(articles.filter { saved.contains($0.id) }) { a in NavigationLink { detail(a) } label: { ArticleRow(article: a) } }.overlay { if saved.isEmpty { ContentUnavailableView("Нет избранного", systemImage: "star", description: Text("Откройте статью и нажмите звезду.")) } }.navigationTitle("Избранное") }.tabItem { Label("Избранное", systemImage: "star") }
-            RegistryView(registry: registry).tabItem { Label("Реестр", systemImage: "books.vertical") }
+            }.tabItem { Label("Поиск", systemImage: "magnifyingglass") }.tag(1)
+            let favorites = articles.filter { saved.contains($0.id) }
+            NavigationStack { List(favorites) { a in NavigationLink { detail(a, in: favorites) } label: { ArticleRow(article: a) } }.overlay { if saved.isEmpty { ContentUnavailableView("Нет избранного", systemImage: "star", description: Text("Откройте статью и нажмите звезду.")) } }.navigationTitle("Избранное") }.tabItem { Label("Избранное", systemImage: "star") }.tag(2)
+            RegistryView(registry: registry).tabItem { Label("Реестр", systemImage: "books.vertical") }.tag(3)
             NavigationStack {
                 Form {
                     Section("Внешний вид") { Picker("Тема", selection: $theme) { ForEach(["Системная", "Светлая", "Тёмная"], id: \.self) { Text($0) } }; Slider(value: $fontSize, in: 14...25, step: 1); Text("Размер текста: \(Int(fontSize))") }
                     Section("База") { Text(updateStatus.isEmpty ? "Суточная проверка при открытии" : updateStatus); Button("Импортировать JSON") { importing = true }; Link("Форум RMRP", destination: URL(string: "https://forum.rmrp.ru/")!); Text("Импорт заменяет базу и очищает избранное. Требуется JSON в формате проекта.").font(.footnote); if !error.isEmpty { Text(error).foregroundStyle(.red) } }
                     Section { Button("Очистить историю", role: .destructive) { history = "" } }
                 }.navigationTitle("Настройки")
-            }.tabItem { Label("Настройки", systemImage: "gearshape") }
+            }.tabItem { Label("Настройки", systemImage: "gearshape") }.tag(4)
         }.preferredColorScheme(theme == "Тёмная" ? .dark : theme == "Светлая" ? .light : nil).onAppear { if articles.isEmpty { load() } }.task(id: phase) { if phase == .active { await refreshArticles() } }.fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             do { let url = try result.get(); let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }; let data = try Data(contentsOf: url); let decoded = try JSONDecoder().decode([Article].self, from: data); guard !decoded.isEmpty, Set(decoded.map(\.id)).count == decoded.count else { throw CocoaError(.fileReadCorruptFile) }; let dir = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true); try data.write(to: dir.appendingPathComponent("articles.json"), options: .atomic); favorites = ""; articles = decoded; lastCheck = 0; error = "" } catch { self.error = error.localizedDescription }
         }
     }
-    func detail(_ a: Article) -> some View { ArticleDetail(article: a, saved: saved.contains(a.id), toggle: { toggle(a) }, fontSize: fontSize) }
+    func detail(_ article: Article, in collection: [Article]) -> some View {
+        ArticlePager(articles: collection, initial: article, saved: saved, toggle: toggle, fontSize: fontSize)
+    }
 }
 struct ArticleList: View {
     let title: String; let articles: [Article]; let saved: Set<String>; let toggle: (Article) -> Void; let fontSize: Double
     @State private var query = ""
     var filtered: [Article] { query.isEmpty ? articles : articles.filter { $0.searchable.contains(query.lowercased().replacingOccurrences(of: "ё", with: "е")) } }
     var body: some View {
-        List { ForEach(filtered) { a in NavigationLink { ArticleDetail(article: a, saved: saved.contains(a.id), toggle: { toggle(a) }, fontSize: fontSize) } label: { ArticleRow(article: a) } } }.navigationTitle(title).searchable(text: $query, prompt: "Поиск в разделе")
+        let matches = filtered
+        List(matches) { article in
+            NavigationLink {
+                ArticlePager(articles: matches, initial: article, saved: saved, toggle: toggle, fontSize: fontSize)
+            } label: {
+                ArticleRow(article: article)
+            }
+        }
+        .navigationTitle(title)
+        .searchable(text: $query, prompt: "Поиск в разделе")
     }
 }
 struct ArticleRow: View {
     let article: Article
-    var body: some View { VStack(alignment: .leading, spacing: 5) { Text(article.document).font(.caption).foregroundStyle(.secondary); Text(article.heading).font(.headline); Text(article.body).font(.subheadline).lineLimit(2).foregroundStyle(.secondary); if !article.penalty.isEmpty { Text(article.penalty.replacingOccurrences(of: "\n", with: " · ")).font(.caption).foregroundStyle(.orange) } }.padding(.vertical, 5) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(article.document).font(.caption).foregroundStyle(.secondary)
+            Text(article.heading).font(.headline)
+            Text(article.body).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+            if !article.penalty.isEmpty {
+                Label(article.penalty.replacingOccurrences(of: "\n", with: " · "),
+                      systemImage: "scale.3d")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 7)
+    }
 }
+
+struct ArticlePager: View {
+    @State private var articles: [Article]
+    let saved: Set<String>
+    let toggle: (Article) -> Void
+    let fontSize: Double
+    @State private var index: Int
+
+    init(articles: [Article], initial: Article, saved: Set<String>, toggle: @escaping (Article) -> Void, fontSize: Double) {
+        _articles = State(initialValue: articles.isEmpty ? [initial] : articles)
+        self.saved = saved
+        self.toggle = toggle
+        self.fontSize = fontSize
+        _index = State(initialValue: articles.firstIndex { $0.id == initial.id } ?? 0)
+    }
+
+    var body: some View {
+        let article = articles[index]
+        ArticleDetail(article: article, saved: saved.contains(article.id), toggle: { toggle(article) }, fontSize: fontSize)
+            .id(article.id)
+            .simultaneousGesture(DragGesture(minimumDistance: 32).onEnded { drag in
+                let x = drag.translation.width
+                guard drag.startLocation.x > 24, abs(x) > 60, abs(x) > abs(drag.translation.height) * 1.5 else { return }
+                move(x < 0 ? 1 : -1)
+            })
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if articles.count > 1 {
+                    HStack {
+                        Button { move(-1) } label: { Label("Назад", systemImage: "chevron.left") }
+                            .disabled(index == 0)
+                        Spacer()
+                        Text("\(index + 1) из \(articles.count)")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        Spacer()
+                        Button { move(1) } label: { Label("Далее", systemImage: "chevron.right") }
+                            .disabled(index == articles.count - 1)
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial)
+                }
+            }
+            .navigationTitle(article.number.isEmpty ? "Документ" : "Статья \(article.number)")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func move(_ offset: Int) {
+        let destination = index + offset
+        guard articles.indices.contains(destination) else { return }
+        index = destination
+    }
+}
+
 struct ArticleDetail: View {
-    let article: Article; let saved: Bool; let toggle: () -> Void; let fontSize: Double
-    @State private var localSaved: Bool? = nil
+    let article: Article
+    let saved: Bool
+    let toggle: () -> Void
+    let fontSize: Double
+    @State private var localSaved: Bool?
     @State private var copied = false
-    var body: some View { ScrollView { VStack(alignment: .leading, spacing: 18) { Text(article.document).font(.subheadline).foregroundStyle(.secondary); Text(article.heading).font(.title2.bold()); Text(article.body).font(.system(size: fontSize)).textSelection(.enabled); if !article.penalty.isEmpty { VStack(alignment: .leading, spacing: 8) { Label("Наказание", systemImage: "scale.3d").font(.headline); Text(article.penalty).font(.system(size: fontSize)).textSelection(.enabled) }.padding().frame(maxWidth: .infinity, alignment: .leading).background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14)) }; Button { UIPasteboard.general.string = article.copyText; copied = true } label: { Label(copied ? "Скопировано" : "Копировать статью", systemImage: copied ? "checkmark" : "doc.on.doc").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent); if let url = URL(string: article.url), url.scheme == "https" { Link("Оригинал на форуме", destination: url) } }.padding() }.navigationTitle(article.number.isEmpty ? "Документ" : "Статья \(article.number)").navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .topBarTrailing) { Button { localSaved = !(localSaved ?? saved); toggle() } label: { Image(systemName: (localSaved ?? saved) ? "star.fill" : "star") }.accessibilityLabel((localSaved ?? saved) ? "Убрать из избранного" : "В избранное") } } }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 17) {
+                Text(article.document)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.blue)
+                Text(article.heading)
+                    .font(.largeTitle.bold())
+                    .accessibilityAddTraits(.isHeader)
+                if !article.penalty.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Наказание", systemImage: "scale.3d").font(.headline)
+                        Text(article.penalty).font(.system(size: fontSize)).textSelection(.enabled)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 16))
+                }
+                Divider()
+                Text(article.body)
+                    .font(.system(size: fontSize))
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+                Button {
+                    UIPasteboard.general.string = article.copyText
+                    copied = true
+                } label: {
+                    Label(copied ? "Скопировано" : "Копировать статью",
+                          systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                if let url = URL(string: article.url), url.scheme == "https" {
+                    Link("Источник на форуме", destination: url).font(.footnote)
+                }
+            }
+            .frame(maxWidth: 680, alignment: .leading)
+            .padding(20)
+            .frame(maxWidth: .infinity)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    localSaved = !(localSaved ?? saved)
+                    toggle()
+                } label: {
+                    Image(systemName: (localSaved ?? saved) ? "star.fill" : "star")
+                }
+                .accessibilityLabel((localSaved ?? saved) ? "Убрать из избранного" : "В избранное")
+            }
+        }
+    }
 }
 
