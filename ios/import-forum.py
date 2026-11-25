@@ -99,7 +99,7 @@ def prepare(item):
     rows = []
     seen = {}
     doc = law["title"]
-    group = category[i] if i < len(category) else "Законы"
+    group = law.get("category") or (category[i] if i < len(category) else "Законы")
 
     def row(number, title, body, suffix, penalty=""):
         return dict(id=f'forum-{law["id"]}-{suffix}', category=group, document=doc, number=number,
