@@ -1,5 +1,26 @@
 {
   "server": "Тверской",
-  "sources": [],
+  "sources": [
+    {
+      "document": "УК",
+      "url": "https://forum.rmrp.ru/threads/ugolovnyj-kodeks-rossijskoj-federacii.58209/",
+      "status": "review_required"
+    },
+    {
+      "document": "КоАП",
+      "url": "https://forum.rmrp.ru/threads/kodeks-ob-administrativnyx-pravonarushenijax-rossijskoj-federacii.58229/",
+      "status": "review_required"
+    },
+    {
+      "document": "ПК",
+      "url": "https://forum.rmrp.ru/threads/processualnyj-kodeks-rossijskoj-federacii.58424/",
+      "status": "review_required"
+    },
+    {
+      "document": "УПК",
+      "url": "https://forum.rmrp.ru/threads/ugolovno-processualnyj-kodeks-rossijskoj-federacii.90218/",
+      "status": "review_required"
+    }
+  ],
   "publication_enabled": false
 }
