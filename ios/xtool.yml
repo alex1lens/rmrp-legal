@@ -1,0 +1,6 @@
+version: 1
+bundleID: com.alex1lens.rmrplegal
+iconPath: AppIcon.png
+infoPath: Info.plist
+product: RMRPLegal
+
