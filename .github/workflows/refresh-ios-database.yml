@@ -1,7 +1,11 @@
 name: Daily RMRP Legal database
 on:
   schedule:
+    # Primary 06:17, then retry at 07:53, 12:43 and 20:37 in Tashkent.
     - cron: '17 1 * * *'
+    - cron: '53 2 * * *'
+    - cron: '43 7 * * *'
+    - cron: '37 15 * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -23,11 +27,28 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: Download and validate official documents
-        run: python3 ios/import-forum.py ios data/articles.json
-      - name: Publish changed database
+      - name: Check whether today's refresh already succeeded
+        id: daily
+        shell: bash
         run: |
-          git add data/articles.json
+          today=$(TZ=Asia/Tashkent date +%F)
+          echo "date=$today" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == schedule && -s data/articles.json && -f data/refresh-date.txt && $(cat data/refresh-date.txt) == "$today" ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Database already refreshed on $today (Tashkent)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download and validate official documents
+        if: steps.daily.outputs.needed == 'true'
+        run: python3 ios/import-forum.py ios data/articles.json
+      - name: Publish validated database and successful refresh date
+        if: steps.daily.outputs.needed == 'true'
+        env:
+          REFRESH_DATE: ${{ steps.daily.outputs.date }}
+        run: |
+          printf '%s\n' "$REFRESH_DATE" > data/refresh-date.txt
+          git add data/articles.json data/refresh-date.txt
           if git diff --cached --quiet; then exit 0; fi
           git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com commit -m "Refresh RMRP Legal offline database"
           git push
